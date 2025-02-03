@@ -3,6 +3,7 @@ extern crate sdl2;
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use sdl2::rect::Point;
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -14,6 +15,12 @@ impl From<(i32,i32)> for Coord{
             x,
             y
         }
+    }
+}
+
+impl From<Coord> for Point{
+    fn from(value: Coord) -> Self {
+        Point::new(value.x, value.y)
     }
 }
 
@@ -39,10 +46,9 @@ struct VisualGrid{
 }
 
 pub fn main() {
-    let test = Coord::from((0,0));
-    let neighbours = test.get_neighbours();
 
-    println!("{neighbours:?}");
+    let white = Color::RGB(246, 226, 157);
+    let black = Color::RGB(69, 50, 32);
 
 
     let sdl_context = sdl2::init().unwrap();
@@ -60,8 +66,11 @@ pub fn main() {
     canvas.present();
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut running: bool = false;
+    
+    let mut grid_len:u32 = 100;
+    
     'running: loop {
-        
+        canvas.set_draw_color(black);
         canvas.clear();
         for event in event_pump.poll_iter() {
             match event {
@@ -72,10 +81,26 @@ pub fn main() {
                 Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
                     running = !running;
                 },
+                Event::KeyDown { keycode: Some(Keycode::Equals), .. } => {
+                    grid_len += 5;
+                },
+                Event::KeyDown { keycode: Some(Keycode::Minus), .. } => {
+                    if grid_len > 6{
+                        grid_len -= 5;
+                    }
+                },
                 _ => {}
             }
         }
         // The rest of the loop goes here..
+        canvas.set_draw_color(white);
+
+        for x in (0..800).step_by(grid_len.try_into().unwrap()){
+            canvas.draw_line(Point::new(x, 0), Point::new(x, 600));
+        }
+        for y in (0..600).step_by(grid_len.try_into().unwrap()){
+            canvas.draw_line(Point::new(0, y), Point::new(800, y));
+        }
 
         canvas.present();
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
