@@ -23,7 +23,7 @@ impl Coord {
 
         for x in [self.x-1,self.x,self.x+1]{
             for y in [self.y-1,self.y,self.y+1]{
-                if !(x == y && x == 0){
+                if !(x == y && x == self.x){
                     arr.push(Coord::from((x,y)));
                 }
             }
