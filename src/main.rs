@@ -43,37 +43,82 @@ impl Coord {
     }    
 }
 struct VisualGrid{
-    size:u32, //pixels
-    position:Coord
+    grid_cell_size:i32,
+    grid_width:i32, 
+    grid_height:i32,
+
+    window_width :i32,
+    window_height:i32,
+}
+
+impl VisualGrid {
+    const WHITE:Color = Color::RGB(246, 226, 157);
+    const GRAY:Color = Color::RGB(127, 106, 85);
+    const YELLOW:Color = Color::RGB(218, 130, 19);
+    const BLACK:Color = Color::RGB(69, 50, 32);
+
+    fn from(grid_cell_size:i32,
+            grid_width:i32, 
+            grid_height:i32) -> Self{
+                Self{
+                    grid_cell_size,
+                grid_width, 
+                grid_height,
+                
+                // + 1 so that the last grid lines fit in the screen.
+                window_width  : ((grid_width  * grid_cell_size) + 1).try_into().unwrap(),
+                window_height : ((grid_height * grid_cell_size) + 1).try_into().unwrap()
+                }
+            }
+
+    fn normalise_coord(&mut self){
+        self.grid_width  = ((self.window_width -1)/self.grid_cell_size);
+        self.grid_height = ((self.window_height-1)/self.grid_cell_size);
+    }
+}
+
+impl From<&VisualGrid> for Rect{
+    fn from(vg:&VisualGrid) -> Self{
+        let rec = Rect::new(
+            ((vg.grid_width - 1) / 2 * vg.grid_cell_size).try_into().unwrap(),
+            ((vg.grid_height - 1) / 2 * vg.grid_cell_size).try_into().unwrap(),
+            vg.grid_cell_size.try_into().unwrap(),
+            vg.grid_cell_size.try_into().unwrap(),
+        );
+    
+        rec
+    }
+}
+
+
+
+fn normalise_coord(rec: &mut Rect, vg:&VisualGrid){
+    rec.set_width(vg.grid_cell_size.try_into().unwrap());
+    rec.set_height(vg.grid_cell_size.try_into().unwrap());
+    rec.x = (rec.x / vg.grid_cell_size) * vg.grid_cell_size;
+    rec.y = (rec.y / vg.grid_cell_size) * vg.grid_cell_size;
+}
+
+fn snap_to_closest(rec: &mut Rect, vg: &VisualGrid, x:i32, y:i32){
+    rec.x = (x / vg.grid_cell_size) * vg.grid_cell_size;
+    rec.y = (y / vg.grid_cell_size) * vg.grid_cell_size;
 }
 
 pub fn main() {
 
-    let white = Color::RGB(246, 226, 157);
-    let gray = Color::RGB(127, 106, 85);
-    let yellow = Color::RGB(218, 130, 19);
-    let black = Color::RGB(69, 50, 32);
-
-    let mut grid_cell_size:i32 = 36;
-    let mut grid_width = 29;
-    let mut grid_height = 23;
-
-    // + 1 so that the last grid lines fit in the screen.
-    let mut window_width = (grid_width * grid_cell_size) + 1;
-    let mut window_height = (grid_height * grid_cell_size) + 1;
-
+    let mut vg:VisualGrid = VisualGrid::from( 36, 29, 23 );
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    let window = video_subsystem.window("etude-gol", window_width.try_into().unwrap(), window_height.try_into().unwrap())
+    let window = video_subsystem.window("etude-gol", vg.window_width.try_into().unwrap(), vg.window_height.try_into().unwrap())
         .position_centered()
         .build()
         .unwrap();
 
     let mut canvas = window.into_canvas().build().unwrap();
 
-    canvas.set_draw_color(Color::RGB(66, 68, 72));
+    canvas.set_draw_color(VisualGrid::BLACK);
     canvas.clear();
     canvas.present();
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -81,20 +126,14 @@ pub fn main() {
     let mut running: bool = false;
     
 
-    let mut grid_cursor = Rect::new(((grid_width - 1) / 2 * grid_cell_size).try_into().unwrap(),
-                                          ((grid_height - 1) / 2 * grid_cell_size).try_into().unwrap(),
-                                          grid_cell_size.try_into().unwrap(),
-                                          grid_cell_size.try_into().unwrap(),);
+    let mut grid_cursor: Rect = Rect::from(&vg);
 
 
-    let mut grid_cursor_ghost = Rect::new(grid_cursor.x.clone(),
-                                          grid_cursor.y.clone(),
-                                          grid_cell_size.try_into().unwrap(),
-                                          grid_cell_size.try_into().unwrap(),);
+    let mut grid_cursor_ghost: Rect = Rect::from(&vg);
 
 
     'running: loop {
-        canvas.set_draw_color(black);
+        canvas.set_draw_color(VisualGrid::BLACK);
         canvas.clear();
         for event in event_pump.poll_iter() {
             match event {
@@ -107,74 +146,62 @@ pub fn main() {
                 },
 
                 Event::KeyDown { keycode: Some(Keycode::Equals), .. } => {
-                    grid_cell_size += 2;
-                    grid_width = (window_width-1)/grid_cell_size;
-                    grid_height = (window_height-1)/grid_cell_size;
-                    grid_cursor.set_width(grid_cell_size.try_into().unwrap());
-                    grid_cursor.set_height(grid_cell_size.try_into().unwrap());
-                    grid_cursor_ghost.set_width(grid_cell_size.try_into().unwrap());
-                    grid_cursor_ghost.set_height(grid_cell_size.try_into().unwrap());
-                    grid_cursor.x = (grid_cursor.x / grid_cell_size) * grid_cell_size;
-                    grid_cursor.y = (grid_cursor.y / grid_cell_size) * grid_cell_size;
+                    vg.grid_cell_size += 2;
+                    vg.normalise_coord();
+                    
+                    normalise_coord(&mut grid_cursor, &vg);
+                    normalise_coord(&mut grid_cursor_ghost, &vg);
                 },
                 Event::KeyDown { keycode: Some(Keycode::Minus), .. } => {
-                    if(grid_cell_size > 3){
-                        grid_cell_size -= 2;
-                        grid_width = (window_width-1)/grid_cell_size;
-                        grid_height = (window_height-1)/grid_cell_size;
-                        grid_cursor.set_width(grid_cell_size.try_into().unwrap());
-                        grid_cursor.set_height(grid_cell_size.try_into().unwrap());
-                        grid_cursor_ghost.set_width(grid_cell_size.try_into().unwrap());
-                        grid_cursor_ghost.set_height(grid_cell_size.try_into().unwrap());
-                        grid_cursor.x = (grid_cursor.x / grid_cell_size) * grid_cell_size;
-                        grid_cursor.y = (grid_cursor.y / grid_cell_size) * grid_cell_size;
-                        grid_cursor_ghost.x = (grid_cursor_ghost.x / grid_cell_size) * grid_cell_size;
-                        grid_cursor_ghost.y = (grid_cursor_ghost.y / grid_cell_size) * grid_cell_size;
+                    if(vg.grid_cell_size > 3){
+                        vg.grid_cell_size -= 2;
+                        vg.normalise_coord();
+                        
+                        normalise_coord(&mut grid_cursor, &vg);
+                        normalise_coord(&mut grid_cursor_ghost, &vg);
                     }
                 },
 
                 Event::KeyDown { keycode: Some(Keycode::Down), .. } => {
-                    grid_cursor.y += grid_cell_size;
+                    grid_cursor.y += vg.grid_cell_size;
                 },
                 Event::KeyDown { keycode: Some(Keycode::Up), .. } => {
-                    grid_cursor.y -= grid_cell_size;
+                    grid_cursor.y -= vg.grid_cell_size;
                 },
                 Event::KeyDown { keycode: Some(Keycode::Left), .. } => {
-                    grid_cursor.x -= grid_cell_size;
+                    grid_cursor.x -= vg.grid_cell_size;
                 },
                 Event::KeyDown { keycode: Some(Keycode::Right), .. } => {
-                    grid_cursor.x += grid_cell_size;
+                    grid_cursor.x += vg.grid_cell_size;
                 },
 
                 Event::MouseMotion {x, y, ..} => {
-                    grid_cursor_ghost.x = (x / grid_cell_size) * grid_cell_size;
-                    grid_cursor_ghost.y = (y / grid_cell_size) * grid_cell_size;
+                    snap_to_closest(&mut grid_cursor_ghost, &vg, x, y);
                 }
                 Event::MouseButtonDown {x, y, ..} => {
-                    grid_cursor.x = (x / grid_cell_size) * grid_cell_size;
-                    grid_cursor.y = (y / grid_cell_size) * grid_cell_size;
+                    snap_to_closest(&mut grid_cursor, &vg, x, y);
                 }
                 _ => {}
             }
         }
         // The rest of the loop goes here..
 
-        canvas.set_draw_color(gray);
+        canvas.set_draw_color(VisualGrid::GRAY);
         //vertical lines
-        for x in (0..1 + grid_width * grid_cell_size).step_by(grid_cell_size.try_into().unwrap()){
-            canvas.draw_line(Point::new(x, 0), Point::new(x, window_height));
+        for x in (0..1 + vg.grid_width * vg.grid_cell_size).step_by(vg.grid_cell_size.try_into().unwrap()){
+            canvas.draw_line(Point::new(x, 0), Point::new(x, vg.window_height));
         }
         //horizontal lines
-        for y in (0..1 + grid_height * grid_cell_size).step_by(grid_cell_size.try_into().unwrap()){
-            canvas.draw_line(Point::new(0, y), Point::new(window_width, y));
+        for y in (0..1 + vg.grid_height * vg.grid_cell_size).step_by(vg.grid_cell_size.try_into().unwrap()){
+            canvas.draw_line(Point::new(0, y), Point::new(vg.window_width, y));
         }
 
 
-        canvas.set_draw_color(white);
+        canvas.set_draw_color(VisualGrid::WHITE);
         canvas.draw_rect(grid_cursor);
 
 
-        canvas.set_draw_color(yellow);
+        canvas.set_draw_color(VisualGrid::YELLOW);
         canvas.draw_rect(grid_cursor_ghost);
 
 
