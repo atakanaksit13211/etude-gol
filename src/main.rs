@@ -114,6 +114,8 @@ pub fn main() {
                     grid_cursor.set_height(grid_cell_size.try_into().unwrap());
                     grid_cursor_ghost.set_width(grid_cell_size.try_into().unwrap());
                     grid_cursor_ghost.set_height(grid_cell_size.try_into().unwrap());
+                    grid_cursor.x = (grid_cursor.x / grid_cell_size) * grid_cell_size;
+                    grid_cursor.y = (grid_cursor.y / grid_cell_size) * grid_cell_size;
                 },
                 Event::KeyDown { keycode: Some(Keycode::Minus), .. } => {
                     if(grid_cell_size > 3){
@@ -124,6 +126,10 @@ pub fn main() {
                         grid_cursor.set_height(grid_cell_size.try_into().unwrap());
                         grid_cursor_ghost.set_width(grid_cell_size.try_into().unwrap());
                         grid_cursor_ghost.set_height(grid_cell_size.try_into().unwrap());
+                        grid_cursor.x = (grid_cursor.x / grid_cell_size) * grid_cell_size;
+                        grid_cursor.y = (grid_cursor.y / grid_cell_size) * grid_cell_size;
+                        grid_cursor_ghost.x = (grid_cursor_ghost.x / grid_cell_size) * grid_cell_size;
+                        grid_cursor_ghost.y = (grid_cursor_ghost.y / grid_cell_size) * grid_cell_size;
                     }
                 },
 
