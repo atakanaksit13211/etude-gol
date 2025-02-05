@@ -32,7 +32,7 @@ impl Coord {
 
         for x in [self.x-1,self.x,self.x+1]{
             for y in [self.y-1,self.y,self.y+1]{
-                if !(x == y && x == self.x){
+                if !(y == self.y && x == self.x){
                     arr.push(Coord::from((x,y)));
                 }
             }
@@ -42,10 +42,22 @@ impl Coord {
         arr
     }
 
+
     fn add(&mut self, other:&Coord){
         self.x += other.x;
         self.y += other.y;
     }
+}
+
+fn sanitize(coords:[Coord;8]) -> Vec<Coord>{
+    let mut out:Vec<Coord> = Vec::new();
+    for coord in coords{
+        if (0..10_000).contains(&coord.x) && (0..10_000).contains(&coord.y) {
+            out.push(coord);
+        }
+    }
+
+    return out
 }
 struct VisualGrid{
     grid_cell_size:i32,
@@ -69,14 +81,14 @@ impl VisualGrid {
             grid_height:i32) -> Self{
                 Self{
                     grid_cell_size,
-                grid_width, 
-                grid_height,
+                    grid_width, 
+                    grid_height,
                 
-                // + 1 so that the last grid lines fit in the screen.
-                window_width  : ((grid_width  * grid_cell_size) + 1).try_into().unwrap(),
-                window_height : ((grid_height * grid_cell_size) + 1).try_into().unwrap(),
+                    // + 1 so that the last grid lines fit in the screen.
+                    window_width  : ((grid_width  * grid_cell_size) + 1).try_into().unwrap(),
+                    window_height : ((grid_height * grid_cell_size) + 1).try_into().unwrap(),
 
-                curr_coord: Coord::from((5000, 5000)), //middle of the grid.
+                    curr_coord: Coord::from((5000, 5000)), //middle of the grid.
                 }
             }
 
@@ -122,7 +134,7 @@ fn get_snap_coord(coor: &Coord, vg: &VisualGrid) -> Coord{
 
 
 struct GolGrid {
-    grid:[bool; 100_000_000], //10_000x10_000 = 10_000^2
+    grid:Vec<bool>, //of size 100_000_000 = 10_000x10_000 = 10_000^2
 }
 
 impl GolGrid {
@@ -138,7 +150,7 @@ impl GolGrid {
     }
 
     fn get_index(coord:&Coord) -> usize{
-        let index:usize = (coord.x + coord.y*10_000).try_into().unwrap();
+        let index:usize = (coord.x + coord.y*10_000).try_into().expect("Failed to convert coord into index!");
 
         index
     }
@@ -146,13 +158,14 @@ impl GolGrid {
     fn get_coord(index:&usize) -> Coord{
         return Coord::from((
             <usize as TryInto<i32>>::try_into(index % 10_000).unwrap(),
-            <usize as TryInto<i32>>::try_into(index / 10_1000).unwrap()
+            <usize as TryInto<i32>>::try_into(index / 10_000).unwrap()
         ))
     }
 
     fn new() -> Self{
         Self{
-            grid: [false; 100_000_000]
+            grid: std::iter::repeat(false).take(100_000_000).collect::<Vec<bool>>()
+
         }
     }
 
@@ -167,20 +180,33 @@ impl GolGrid {
 
             let mut num_neigh = 0;
 
-            for neighbour in curr_coor.get_neighbours(){
+            for neighbour in sanitize(curr_coor.get_neighbours()){
                 if self.get_val(&neighbour){ //there is a alive neighbour
                     num_neigh += 1;
                 }
             }
 
             if *val{ //current cell is alive
+                let test = sanitize(curr_coor.get_neighbours());
+                println!("Found a alive cell!");
+                println!("Current coords {curr_coor:?}");
+                println!("{test:?}");
                 match num_neigh{
-                    2 | 3 => dup.grid[i] = true,
-                    _     => dup.grid[i] = false,
+                    2 | 3 => {
+                        dup.grid[i] = true;
+                        println!("A cell is still alive at {curr_coor:?} because it has {num_neigh} neighbours!");
+                    }
+                    _     => {
+                        dup.grid[i] = false;
+                        println!("Killed an alive cell at {curr_coor:?} cell because it had {num_neigh} neighbours!");
+                    }
                 }
             } else{ //current cell is dead
                 match num_neigh {
-                    3 => dup.grid[i] = true,
+                    3 => {
+                        dup.grid[i] = true;
+                        println!("A new cell is born at {curr_coor:?} because it has {num_neigh} neighbours!");
+                    }
                     _ => dup.grid[i] = false,         
                 }
             }
@@ -223,6 +249,9 @@ pub fn main() {
 
     let mut mygrid = GolGrid::new();
 
+
+    let test_coord = Coord::from((5000,5000));
+    println!("{}", GolGrid::get_index(&test_coord));
 
     'running: loop {
         canvas.set_draw_color(VisualGrid::BLACK);
@@ -276,10 +305,11 @@ pub fn main() {
 
 
                 Event::KeyDown { keycode: Some(Keycode::SPACE), .. } => {
-                    let mut coor = get_snap_coord(&Coord::from((grid_cursor.x,grid_cursor.y)), &vg);
+                    let mut coor = Coord::from((grid_cursor.x/vg.grid_cell_size, grid_cursor.y/vg.grid_cell_size));
                     coor.add(&vg.curr_coord);
 
                     mygrid.complement_val(&coor);
+                    println!("changed coord at {coor:?}!");
                 },
                 _ => {}
             }
@@ -287,12 +317,13 @@ pub fn main() {
         // The rest of the loop goes here..
 
         if running{
-            let mygrid = mygrid.simulate(); //shadow old grid
+            mygrid = mygrid.simulate(); //shadow old grid
+            running = !running;
         }
 
         canvas.set_draw_color(VisualGrid::GRAY);
         //vertical lines
-        /*
+        
         for x in (0..1 + vg.grid_width * vg.grid_cell_size).step_by(vg.grid_cell_size.try_into().unwrap()){
             let _ = canvas.draw_line(Point::new(x, 0), Point::new(x, vg.window_height));
         }
@@ -300,11 +331,11 @@ pub fn main() {
         for y in (0..1 + vg.grid_height * vg.grid_cell_size).step_by(vg.grid_cell_size.try_into().unwrap()){
             let _ = canvas.draw_line(Point::new(0, y), Point::new(vg.window_width, y));
         }
-        */
-
+        
+        //visual representation
         for x in (0..vg.grid_width * vg.grid_cell_size).step_by(vg.grid_cell_size.try_into().unwrap()){
             for y in (0..1 + vg.grid_height * vg.grid_cell_size).step_by(vg.grid_cell_size.try_into().unwrap()){
-                let mut coor = get_snap_coord(&Coord::from((x,y)), &vg);
+                let mut coor = Coord::from((x/vg.grid_cell_size,y/vg.grid_cell_size)); //real coord
                 coor.add(&vg.curr_coord);
 
                 let rec = Rect::new(x, y, vg.grid_cell_size.try_into().unwrap(), vg.grid_cell_size.try_into().unwrap());
