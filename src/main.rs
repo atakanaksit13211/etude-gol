@@ -4,11 +4,12 @@ use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::rect::Point;
+use std::collections::HashSet;
 use std::time::Duration;
 
 use sdl2::rect::Rect;
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy,Hash,PartialEq, Eq)]
 struct Coord{x:i32,y:i32}
 
 impl From<(i32,i32)> for Coord{
@@ -48,6 +49,14 @@ impl Coord {
         self.y += other.y;
     }
 }
+/*
+impl PartialEq for Coord {
+    fn eq(&self, other: &Self) -> bool {
+        (self.x == other.x) && (self.y == other.y)
+    }
+}*/
+
+
 
 fn sanitize(coords:[Coord;8]) -> Vec<Coord>{
     let mut out:Vec<Coord> = Vec::new();
@@ -135,6 +144,7 @@ fn get_snap_coord(coor: &Coord, vg: &VisualGrid) -> Coord{
 
 struct GolGrid {
     grid:Vec<bool>, //of size 100_000_000 = 10_000x10_000 = 10_000^2
+    alive_cells:Vec<Coord> //list of alive cells. this will be used to speed up the checks.
 }
 
 impl GolGrid {
@@ -146,6 +156,13 @@ impl GolGrid {
 
     fn complement_val(&mut self, coord:&Coord){
         let index:usize = GolGrid::get_index(coord);
+
+        if self.grid[index] {
+            self.alive_cells.remove(self.alive_cells.iter().position(|x| *x == *coord).expect("Coord not found!"));
+        }
+        else{
+            self.alive_cells.push(coord.clone());
+        }
         self.grid[index] = !self.grid[index];
     }
 
@@ -164,8 +181,8 @@ impl GolGrid {
 
     fn new() -> Self{
         Self{
-            grid: std::iter::repeat(false).take(100_000_000).collect::<Vec<bool>>()
-
+            grid: std::iter::repeat(false).take(100_000_000).collect::<Vec<bool>>(),
+            alive_cells:Vec::new(),
         }
     }
 
@@ -175,8 +192,21 @@ impl GolGrid {
         let mut dup = GolGrid::new();
 
         let mut curr_coor= Coord::from((0,0));
-        for (i,val) in self.grid.iter().enumerate(){
-            curr_coor = GolGrid::get_coord(&i);
+
+        let mut cells_to_check = HashSet::new();
+        for cell in self.alive_cells.clone(){
+            cells_to_check.insert(cell);
+            let neighbours = sanitize(cell.get_neighbours());
+            for neighbour in neighbours{
+                cells_to_check.insert(neighbour);
+            }
+        }
+
+        for (_,coord) in cells_to_check.iter().enumerate(){
+            let i = GolGrid::get_index(coord);
+            let val = self.grid[i];
+            
+            curr_coor = *coord;
 
             let mut num_neigh = 0;
 
@@ -186,14 +216,15 @@ impl GolGrid {
                 }
             }
 
-            if *val{ //current cell is alive
+            if val{ //current cell is alive
                 let test = sanitize(curr_coor.get_neighbours());
                 println!("Found a alive cell!");
-                println!("Current coords {curr_coor:?}");
-                println!("{test:?}");
+                //println!("Current coords {curr_coor:?}");
+                //println!("{test:?}");
                 match num_neigh{
                     2 | 3 => {
                         dup.grid[i] = true;
+                        dup.alive_cells.push(curr_coor);
                         println!("A cell is still alive at {curr_coor:?} because it has {num_neigh} neighbours!");
                     }
                     _     => {
@@ -205,6 +236,7 @@ impl GolGrid {
                 match num_neigh {
                     3 => {
                         dup.grid[i] = true;
+                        dup.alive_cells.push(curr_coor);
                         println!("A new cell is born at {curr_coor:?} because it has {num_neigh} neighbours!");
                     }
                     _ => dup.grid[i] = false,         
@@ -249,9 +281,6 @@ pub fn main() {
 
     let mut mygrid = GolGrid::new();
 
-
-    let test_coord = Coord::from((5000,5000));
-    println!("{}", GolGrid::get_index(&test_coord));
 
     'running: loop {
         canvas.set_draw_color(VisualGrid::BLACK);
@@ -318,7 +347,7 @@ pub fn main() {
 
         if running{
             mygrid = mygrid.simulate(); //shadow old grid
-            running = !running;
+            //running = !running;
         }
 
         canvas.set_draw_color(VisualGrid::GRAY);
