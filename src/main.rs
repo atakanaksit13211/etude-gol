@@ -9,6 +9,9 @@ use std::time::Duration;
 
 use sdl2::rect::Rect;
 
+use log::{info, trace, warn};
+
+
 #[derive(Debug,Clone,Copy,Hash,PartialEq, Eq)]
 struct Coord{x:i32,y:i32}
 
@@ -143,7 +146,8 @@ fn get_snap_coord(coor: &Coord, vg: &VisualGrid) -> Coord{
 
 
 struct GolGrid {
-    grid:Vec<bool>, //of size 100_000_000 = 10_000x10_000 = 10_000^2
+    grid:[Vec<bool>; 2], //of size 100_000_000 = 10_000x10_000 = 10_000^2
+    curr_grid:usize,
     alive_cells:Vec<Coord> //list of alive cells. this will be used to speed up the checks.
 }
 
@@ -151,19 +155,19 @@ impl GolGrid {
     fn get_val(&self, coord:&Coord) -> bool{
         let index:usize = GolGrid::get_index(coord);
 
-        self.grid[index]
+        self.grid[self.curr_grid][index]
     }
 
     fn complement_val(&mut self, coord:&Coord){
         let index:usize = GolGrid::get_index(coord);
 
-        if self.grid[index] {
+        if self.grid[self.curr_grid][index] { 
             self.alive_cells.remove(self.alive_cells.iter().position(|x| *x == *coord).expect("Coord not found!"));
         }
         else{
             self.alive_cells.push(coord.clone());
         }
-        self.grid[index] = !self.grid[index];
+        self.grid[self.curr_grid][index] = !self.grid[self.curr_grid][index];
     }
 
     fn get_index(coord:&Coord) -> usize{
@@ -180,18 +184,30 @@ impl GolGrid {
     }
 
     fn new() -> Self{
+        let tmp = std::iter::repeat(false).take(100_000_000).collect::<Vec<bool>>();
+        let tmp2 = tmp.clone();
         Self{
-            grid: std::iter::repeat(false).take(100_000_000).collect::<Vec<bool>>(),
+            grid: [tmp, tmp2],
+            curr_grid: 0,
             alive_cells:Vec::new(),
         }
     }
 
-    
+    fn swap_grid(&mut self){
+        self.curr_grid = self.get_other_grid();
+    }
 
-    fn simulate(&self) -> GolGrid{
-        let mut dup = GolGrid::new();
+    fn get_other_grid(&self) -> usize{
+        if self.curr_grid == 0{
+            return 1;
+        } else {
+            return 0;
+        }
+    }
 
-        let mut curr_coor= Coord::from((0,0));
+    fn simulate(&mut self){
+        trace!("Starting sim!");
+        let mut curr_coor: Coord;
 
         let mut cells_to_check = HashSet::new();
         for cell in self.alive_cells.clone(){
@@ -202,9 +218,11 @@ impl GolGrid {
             }
         }
 
+        let other_grid: usize = self.get_other_grid();
+
         for (_,coord) in cells_to_check.iter().enumerate(){
             let i = GolGrid::get_index(coord);
-            let val = self.grid[i];
+            let val = self.grid[self.curr_grid][i];
             
             curr_coor = *coord;
 
@@ -217,36 +235,32 @@ impl GolGrid {
             }
 
             if val{ //current cell is alive
-                let test = sanitize(curr_coor.get_neighbours());
-                println!("Found a alive cell!");
-                //println!("Current coords {curr_coor:?}");
-                //println!("{test:?}");
+                info!("Found a alive cell!");
+                info!("Current coords {curr_coor:?}");
                 match num_neigh{
                     2 | 3 => {
-                        dup.grid[i] = true;
-                        dup.alive_cells.push(curr_coor);
-                        println!("A cell is still alive at {curr_coor:?} because it has {num_neigh} neighbours!");
+                        self.grid[other_grid][i] = true;
+                        self.alive_cells.push(curr_coor);
+                        info!("A cell is still alive at {curr_coor:?} because it has {num_neigh} neighbours!");
                     }
                     _     => {
-                        dup.grid[i] = false;
-                        println!("Killed an alive cell at {curr_coor:?} cell because it had {num_neigh} neighbours!");
+                        self.grid[other_grid][i] = false;
+                        info!("Killed an alive cell at {curr_coor:?} cell because it had {num_neigh} neighbours!");
                     }
                 }
             } else{ //current cell is dead
                 match num_neigh {
                     3 => {
-                        dup.grid[i] = true;
-                        dup.alive_cells.push(curr_coor);
-                        println!("A new cell is born at {curr_coor:?} because it has {num_neigh} neighbours!");
+                        self.grid[other_grid][i] = true;
+                        self.alive_cells.push(curr_coor);
+                        info!("A new cell is born at {curr_coor:?} because it has {num_neigh} neighbours!");
                     }
-                    _ => dup.grid[i] = false,         
+                    _ => self.grid[other_grid][i] = false,         
                 }
             }
-
-            
         }
 
-        return dup
+        self.swap_grid();
     }
     
 }
@@ -338,7 +352,7 @@ pub fn main() {
                     coor.add(&vg.curr_coord);
 
                     mygrid.complement_val(&coor);
-                    println!("changed coord at {coor:?}!");
+                    info!("changed coord at {coor:?}!");
                 },
                 _ => {}
             }
@@ -346,7 +360,7 @@ pub fn main() {
         // The rest of the loop goes here..
 
         if running{
-            mygrid = mygrid.simulate(); //shadow old grid
+            mygrid.simulate(); //shadow old grid
             //running = !running;
         }
 
